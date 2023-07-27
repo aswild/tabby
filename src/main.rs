@@ -3,8 +3,6 @@ use std::io;
 use std::path::Path;
 use std::process::ExitCode;
 
-use clap::{Arg, ArgAction};
-
 #[derive(Debug)]
 enum Text {
     /// A single line of text. Will *not* contain a trailing newline
@@ -70,8 +68,11 @@ impl fmt::Display for Text {
     }
 }
 
-fn main() -> ExitCode {
-    let args = clap::command!()
+#[cfg(feature = "clap")]
+fn parse_args() -> Result<Vec<String>, ExitCode> {
+    use clap::{Arg, ArgAction};
+
+    Ok(clap::command!()
         .arg(
             Arg::new("files")
                 .required(true)
@@ -79,12 +80,56 @@ fn main() -> ExitCode {
                 .value_name("FILE")
                 .help("File(s) to dump"),
         )
-        .get_matches();
-
-    let files: Vec<(&str, Text)> = args
-        .get_many::<String>("files")
+        .get_matches()
+        .get_many("files")
         .expect("no clap files argument")
-        .map(|path| (&**path, Text::read(path)))
+        .map(String::clone)
+        .collect())
+}
+
+#[cfg(not(feature = "clap"))]
+fn parse_args() -> Result<Vec<String>, ExitCode> {
+    static HELP: &str = "\
+Usage: tabby FILE [FILE...]
+Display the contents of multiple one-line files.
+
+Arguments:
+  FILE          File(s) to dump
+
+Options:
+  -h --help     Show this help text
+";
+
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty() {
+        eprint!("Error: missing argument\n{HELP}");
+        return Err(2.into());
+    }
+
+    for arg in args.iter() {
+        match &**arg {
+            "-h" | "--help" => {
+                print!("{HELP}");
+                return Err(ExitCode::SUCCESS);
+            }
+            arg if arg.starts_with('-') => {
+                eprint!("Error: invalid argument: '{arg}'\n{HELP}");
+                return Err(2.into());
+            }
+            _ => (),
+        }
+    }
+
+    Ok(args)
+}
+
+fn run() -> Result<(), ExitCode> {
+    let files: Vec<(String, Text)> = parse_args()?
+        .into_iter()
+        .map(|path| {
+            let text = Text::read(&path);
+            (path, text)
+        })
         .collect();
 
     // print one-liners
@@ -106,8 +151,15 @@ fn main() -> ExitCode {
     }
 
     if had_err {
-        ExitCode::FAILURE
+        Err(ExitCode::FAILURE)
     } else {
-        ExitCode::SUCCESS
+        Ok(())
+    }
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(code) => code,
     }
 }
