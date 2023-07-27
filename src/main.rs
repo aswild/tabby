@@ -1,7 +1,7 @@
 use std::fmt;
 use std::io;
 use std::path::Path;
-use std::process::ExitCode;
+use std::process::exit;
 
 #[derive(Debug)]
 enum Text {
@@ -69,10 +69,10 @@ impl fmt::Display for Text {
 }
 
 #[cfg(feature = "clap")]
-fn parse_args() -> Result<Vec<String>, ExitCode> {
+fn parse_args() -> Vec<String> {
     use clap::{Arg, ArgAction};
 
-    Ok(clap::command!()
+    clap::command!()
         .arg(
             Arg::new("files")
                 .required(true)
@@ -84,11 +84,11 @@ fn parse_args() -> Result<Vec<String>, ExitCode> {
         .get_many("files")
         .expect("no clap files argument")
         .map(String::clone)
-        .collect())
+        .collect()
 }
 
 #[cfg(not(feature = "clap"))]
-fn parse_args() -> Result<Vec<String>, ExitCode> {
+fn parse_args() -> Vec<String> {
     static HELP: &str = "\
 Usage: tabby FILE [FILE...]
 Display the contents of multiple one-line files.
@@ -103,28 +103,28 @@ Options:
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
         eprint!("Error: missing argument\n{HELP}");
-        return Err(2.into());
+        exit(2);
     }
 
     for arg in args.iter() {
         match &**arg {
             "-h" | "--help" => {
                 print!("{HELP}");
-                return Err(ExitCode::SUCCESS);
+                exit(0);
             }
             arg if arg.starts_with('-') => {
                 eprint!("Error: invalid argument: '{arg}'\n{HELP}");
-                return Err(2.into());
+                exit(2);
             }
             _ => (),
         }
     }
 
-    Ok(args)
+    args
 }
 
-fn run() -> Result<(), ExitCode> {
-    let files: Vec<(String, Text)> = parse_args()?
+fn main() {
+    let files: Vec<(String, Text)> = parse_args()
         .into_iter()
         .map(|path| {
             let text = Text::read(&path);
@@ -151,15 +151,6 @@ fn run() -> Result<(), ExitCode> {
     }
 
     if had_err {
-        Err(ExitCode::FAILURE)
-    } else {
-        Ok(())
-    }
-}
-
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(code) => code,
+        exit(1)
     }
 }
