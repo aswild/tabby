@@ -68,59 +68,44 @@ impl fmt::Display for Text {
     }
 }
 
-#[cfg(feature = "clap")]
 fn parse_args() -> Vec<String> {
-    use clap::{Arg, ArgAction};
+    use clap::{Arg, ArgAction, ArgGroup};
 
-    clap::command!()
+    let mut m = clap::command!()
+        .arg(
+            Arg::new("all")
+                .short('a')
+                .long("all")
+                .action(ArgAction::SetTrue)
+                .help("Dump all files in the current directory"),
+        )
         .arg(
             Arg::new("files")
-                .required(true)
                 .action(ArgAction::Append)
                 .value_name("FILE")
                 .help("File(s) to dump"),
         )
-        .get_matches()
-        .get_many("files")
-        .expect("no clap files argument")
-        .map(String::clone)
-        .collect()
-}
+        .group(
+            ArgGroup::new("file_opts")
+                .args(["all", "files"])
+                .required(true),
+        )
+        .get_matches();
 
-#[cfg(not(feature = "clap"))]
-fn parse_args() -> Vec<String> {
-    static HELP: &str = "\
-Usage: tabby FILE [FILE...]
-Display the contents of multiple one-line files.
-
-Arguments:
-  FILE          File(s) to dump
-
-Options:
-  -h --help     Show this help text
-";
-
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.is_empty() {
-        eprint!("Error: missing argument\n{HELP}");
-        exit(2);
+    if m.get_flag("all") {
+        std::fs::read_dir(".")
+            .expect("unable to read contents of current directory")
+            .filter_map(|res| res.ok())
+            .filter(|ent| ent.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+            .map(|ent| {
+                ent.file_name()
+                    .into_string()
+                    .expect("filename is not UTF-8")
+            })
+            .collect()
+    } else {
+        m.remove_many("files").unwrap().collect()
     }
-
-    for arg in args.iter() {
-        match &**arg {
-            "-h" | "--help" => {
-                print!("{HELP}");
-                exit(0);
-            }
-            arg if arg.starts_with('-') => {
-                eprint!("Error: invalid argument: '{arg}'\n{HELP}");
-                exit(2);
-            }
-            _ => (),
-        }
-    }
-
-    args
 }
 
 fn main() {
